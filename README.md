@@ -1,6 +1,6 @@
 # Monitor Input Switch
 
-<img src="resources/images/screenshot.png" width="400" alt="Screenshot">
+<img src="resources/images/screenshot.png" alt="Screenshot">
 
 A GNOME Shell extension that switches an external monitor's input source via `ddcutil`. Lives in the Quick Settings panel.
 
