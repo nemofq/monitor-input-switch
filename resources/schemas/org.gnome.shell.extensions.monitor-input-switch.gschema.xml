@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.monitor-input-switch"
+          path="/org/gnome/shell/extensions/monitor-input-switch/">
+    <key name="target-bus" type="s">
+      <default>""</default>
+      <summary>I²C bus of the selected monitor</summary>
+      <description>Bus number (e.g. "7") of the monitor to control. Empty means use the first detected monitor.</description>
+    </key>
+    <key name="detected-monitors" type="s">
+      <default>"{}"</default>
+      <summary>Last scan result as JSON</summary>
+      <description>Written by the extension after each ddcutil detect, read by the preferences dialog.</description>
+    </key>
+    <key name="rescan-trigger" type="u">
+      <default>0</default>
+      <summary>Rescan counter</summary>
+      <description>Preferences bump this counter to ask the extension to re-scan monitors.</description>
+    </key>
+    <key name="show-hdmi" type="b">
+      <default>true</default>
+      <summary>Show HDMI (0x11) in the tile menu</summary>
+    </key>
+    <key name="show-dp" type="b">
+      <default>true</default>
+      <summary>Show DisplayPort (0x0f) in the tile menu</summary>
+    </key>
+    <key name="show-usbc" type="b">
+      <default>true</default>
+      <summary>Show USB-C (0x1b) in the tile menu</summary>
+    </key>
+  </schema>
+</schemalist>
