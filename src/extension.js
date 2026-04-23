@@ -9,7 +9,7 @@ import { QuickMenuToggle, SystemIndicator } from 'resource:///org/gnome/shell/ui
 import { Ddcutil } from './ddcutil.js';
 
 const ICON = 'video-display-symbolic';
-const MONITORS_CHANGED_SETTLE_MS = 5000;
+const MONITORS_CHANGED_SETTLE_MS = 15000;
 
 // Keep in sync with INPUT_KEYS/inputTitle in prefs.js
 const INPUTS = [
@@ -130,11 +130,12 @@ export default class MonitorInputSwitchExtension extends Extension {
     }
 
     _onMonitorsChanged() {
+        // Debounce: scanning before the monitor and host finish negotiating can cause race condition issues.
         this._clearTimeout('_scanTimeoutId');
         this._scanTimeoutId = GLib.timeout_add(
             GLib.PRIORITY_DEFAULT, MONITORS_CHANGED_SETTLE_MS, () => {
                 this._scanTimeoutId = 0;
-                this._recheckTarget();
+                this._scan();
                 return GLib.SOURCE_REMOVE;
             });
     }
@@ -155,15 +156,6 @@ export default class MonitorInputSwitchExtension extends Extension {
             this._settings.set_string('target-bus', this._currentBus ?? '');
 
         this._refreshTile();
-    }
-
-    async _recheckTarget() {
-        if (!this._currentBus || !this._ddcutil || !this._indicator)
-            return;
-        const ok = await this._ddcutil.probe(this._currentBus);
-        if (!this._indicator)
-            return;
-        this._indicator.tile.reactive = ok;
     }
 
     _onTargetBusChanged() {

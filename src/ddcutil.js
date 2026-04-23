@@ -79,11 +79,6 @@ export class Ddcutil {
         return {};
     }
 
-    async probe(bus) {
-        const stdout = await this._run(['ddcutil', '--bus', bus, 'getvcp', '10', '--terse']);
-        return stdout !== null;
-    }
-
     async setInput(bus, code) {
         await this._run(['ddcutil', '--bus', bus, 'setvcp', '60', code, '--noverify']);
     }
