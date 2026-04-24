@@ -38,6 +38,25 @@ Coming soon.
    gnome-extensions enable monitor-input-switch@nemofq.github.io
    ```
 
+## Troubleshooting
+
+### Screen hang during detection
+
+**Cause:** `ddcutil detect` performs kernel-level I2C operations that can freeze the desktop on some hardware.
+
+**Mitigations:**
+
+- **Sysfs pre-check before `ddcutil detect`:** We read `/sys/class/drm/*/status` to check if any external display is connected. If none, we skip `ddcutil detect` entirely.
+- **`--disable-dynamic-sleep` on `ddcutil detect`:** Prevents `ddcutil` from progressively extending sleep intervals on unresponsive buses.
+
+### GNOME startup / hotplug race conditions
+
+**Cause:** During GNOME Shell startup and after display hotplug events, the compositor is still negotiating with monitors. Sending `ddcutil` commands during this window can race with the DRM subsystem and leave the desktop in a broken state.
+
+**Mitigations:**
+
+- **15-second buffer before scanning:** Both the first scan (after `startup-complete`) and scans triggered by `monitors-changed` wait 15 seconds to let hardware fully settle and avoid firing during hotplug event bursts.
+
 ## Contributing
 
 Feel free to submit an issue or pull request.
@@ -49,6 +68,7 @@ Thanks to these projects for the ideas and groundwork that made this extension p
 - [ddcutil](https://github.com/rockowitz/ddcutil)
 - [display-switcher](https://github.com/skandinaff/display-switcher)
 - [Control Monitor Brightness and Volume with ddcutil](https://extensions.gnome.org/extension/6325/control-monitor-brightness-and-volume-with-ddcutil/)
+- [Brightness control using ddcutil](https://github.com/daitj/gnome-display-brightness-ddcutil)
 
 ## License
 

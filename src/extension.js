@@ -87,7 +87,6 @@ export default class MonitorInputSwitchExtension extends Extension {
 
     disable() {
         this._clearTimeout('_scanTimeoutId');
-        this._clearTimeout('_startupTimeoutId');
 
         if (this._startupCompleteId) {
             Main.layoutManager.disconnect(this._startupCompleteId);
@@ -117,20 +116,19 @@ export default class MonitorInputSwitchExtension extends Extension {
                 'startup-complete', () => {
                     Main.layoutManager.disconnect(this._startupCompleteId);
                     this._startupCompleteId = 0;
-                    this._scan();
+                    this._scheduleScan();
                 });
         } else {
-            this._startupTimeoutId = GLib.timeout_add(
-                GLib.PRIORITY_DEFAULT, MONITORS_CHANGED_SETTLE_MS, () => {
-                    this._startupTimeoutId = 0;
-                    this._scan();
-                    return GLib.SOURCE_REMOVE;
-                });
+            this._scan();
         }
     }
 
     _onMonitorsChanged() {
-        // Debounce: scanning before the monitor and host finish negotiating can cause race condition issues.
+        this._scheduleScan();
+    }
+
+    // Debounce: scanning before the monitor and host finish negotiating can cause race condition issues.
+    _scheduleScan() {
         this._clearTimeout('_scanTimeoutId');
         this._scanTimeoutId = GLib.timeout_add(
             GLib.PRIORITY_DEFAULT, MONITORS_CHANGED_SETTLE_MS, () => {
@@ -187,6 +185,8 @@ export default class MonitorInputSwitchExtension extends Extension {
     async setInput(code) {
         if (!this._currentBus || !this._ddcutil)
             return;
+        const input = INPUTS.find(i => i.code === code);
+        console.log(`[monitor-input-switch] setvcp: bus=${this._currentBus} input=${input?.label ?? code} (code=${code})`);
         await this._ddcutil.setInput(this._currentBus, code);
     }
 

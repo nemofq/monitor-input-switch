@@ -4,6 +4,6 @@
   "description": "Switch an external monitor's input source (HDMI / DP / USB-C) via ddcutil. Requires ddcutil to be installed and working.",
   "shell-version": ["48", "49", "50"],
   "settings-schema": "org.gnome.shell.extensions.monitor-input-switch",
-  "version": 2,
+  "version": 3,
   "url": "https://github.com/nemofq/monitor-input-switch"
 }

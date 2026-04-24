@@ -43,10 +43,6 @@ export class Ddcutil {
     }
 
     destroy() {
-        if (this._sleepId) {
-            GLib.source_remove(this._sleepId);
-            this._sleepId = 0;
-        }
         this._cancellable.cancel();
         this._launcher = null;
     }
@@ -66,17 +62,56 @@ export class Ddcutil {
         }
     }
 
-    async detect(retries = 3) {
-        for (let i = 0; i < retries; i++) {
-            if (this._cancellable.is_cancelled())
-                return {};
-            const stdout = await this._run(['ddcutil', 'detect', '--terse']);
-            const monitors = this._parseDetect(stdout || '');
-            if (Object.keys(monitors).length || i === retries - 1)
-                return monitors;
-            await this._sleep(1000);
+    async _hasExternalDisplay() {
+        console.log('[monitor-input-switch] sysfs pre-check: scanning /sys/class/drm');
+        let enumerator;
+        try {
+            const drmDir = Gio.File.new_for_path('/sys/class/drm');
+            enumerator = drmDir.enumerate_children(
+                'standard::name', Gio.FileQueryInfoFlags.NONE, null);
+        } catch (_e) {
+            console.log('[monitor-input-switch] sysfs pre-check: sysfs read failed, falling through to ddcutil');
+            return true;
         }
-        return {};
+        try {
+            let info;
+            while ((info = enumerator.next_file(null)) !== null) {
+                const name = info.get_name();
+                if (!name.includes('-')) continue;
+                if (/-(eDP|LVDS|DSI|Writeback|Virtual)-/i.test(name)) continue;
+                try {
+                    const [, contents] = GLib.file_get_contents(
+                        `/sys/class/drm/${name}/status`);
+                    if (new TextDecoder().decode(contents).trim() === 'connected') {
+                        console.log(`[monitor-input-switch] sysfs pre-check: found connected external display (${name})`);
+                        return true;
+                    }
+                } catch (_e) {}
+            }
+        } catch (_e) {
+            console.log('[monitor-input-switch] sysfs pre-check: sysfs read failed, falling through to ddcutil');
+            return true;
+        } finally {
+            try { enumerator.close(null); } catch (_e) {}
+        }
+        console.log('[monitor-input-switch] sysfs pre-check: no external display connected');
+        return false;
+    }
+
+    async detect() {
+        if (!(await this._hasExternalDisplay()))
+            return {};
+        if (this._cancellable.is_cancelled())
+            return {};
+        console.log('[monitor-input-switch] ddcutil detect: starting');
+        const stdout = await this._run([
+            'ddcutil', 'detect', '--terse',
+            '--disable-dynamic-sleep',
+        ]);
+        const monitors = this._parseDetect(stdout || '');
+        const count = Object.keys(monitors).length;
+        console.log(`[monitor-input-switch] ddcutil detect: found ${count} monitor(s)`);
+        return monitors;
     }
 
     async setInput(bus, code) {
@@ -115,15 +150,5 @@ export class Ddcutil {
     _friendlyName(raw) {
         const parts = raw.split(':');
         return parts.length >= 2 ? parts[1].trim() || raw : raw;
-    }
-
-    _sleep(ms) {
-        return new Promise(resolve => {
-            this._sleepId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
-                this._sleepId = 0;
-                resolve();
-                return GLib.SOURCE_REMOVE;
-            });
-        });
     }
 }
