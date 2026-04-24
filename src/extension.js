@@ -9,7 +9,7 @@ import { QuickMenuToggle, SystemIndicator } from 'resource:///org/gnome/shell/ui
 import { Ddcutil } from './ddcutil.js';
 
 const ICON = 'video-display-symbolic';
-const MONITORS_CHANGED_SETTLE_MS = 15000;
+const MONITORS_CHANGED_SETTLE_MS = 30000;
 
 // Keep in sync with INPUT_KEYS/inputTitle in prefs.js
 const INPUTS = [
