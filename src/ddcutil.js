@@ -3,6 +3,11 @@ import GLib from 'gi://GLib';
 
 let _promisified = false;
 
+// Hard wall-clock cap on any ddcutil invocation. detect typically ~3-4s,
+// setvcp --noverify is near-instant. A wedged subprocess holding the Lock
+// would silently break all future scans for the rest of the session.
+const SUBPROCESS_TIMEOUT_MS = 30000;
+
 class Lock {
     constructor() {
         this._queue = [];
@@ -49,15 +54,27 @@ export class Ddcutil {
 
     async _run(argv) {
         await this._lock.acquire();
+        let proc = null;
+        let timeoutId = 0;
         try {
             if (this._cancellable.is_cancelled() || !this._launcher)
                 return null;
-            const proc = this._launcher.spawnv(argv);
+            proc = this._launcher.spawnv(argv);
+            timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SUBPROCESS_TIMEOUT_MS, () => {
+                timeoutId = 0;
+                console.log(`[monitor-input-switch] subprocess timeout after ${SUBPROCESS_TIMEOUT_MS}ms, killing: ${argv[0]}`);
+                try { proc.force_exit(); } catch (_e) {}
+                return GLib.SOURCE_REMOVE;
+            });
             const [stdout] = await proc.communicate_utf8_async(null, this._cancellable);
             return proc.get_successful() ? stdout : null;
         } catch (_e) {
             return null;
         } finally {
+            if (timeoutId) {
+                GLib.source_remove(timeoutId);
+                timeoutId = 0;
+            }
             this._lock.release();
         }
     }

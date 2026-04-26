@@ -1,5 +1,6 @@
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
@@ -82,12 +83,34 @@ export default class MonitorInputSwitchExtension extends Extension {
         this._monitorsChangedId = Main.layoutManager.connect(
             'monitors-changed', () => this._onMonitorsChanged());
 
+        // Cancel any pending scan when the system is about to suspend.
+        // A scan firing into the suspend window has been observed to coincide
+        // with mutter hangs that block lid-close suspend.
+        this._sleepSignalId = Gio.DBus.system.signal_subscribe(
+            'org.freedesktop.login1',
+            'org.freedesktop.login1.Manager',
+            'PrepareForSleep',
+            '/org/freedesktop/login1',
+            null,
+            Gio.DBusSignalFlags.NONE,
+            (_conn, _sender, _path, _iface, _signal, params) => {
+                const [aboutToSleep] = params.deep_unpack();
+                if (aboutToSleep && this._scanTimeoutId) {
+                    console.log('[monitor-input-switch] PrepareForSleep: cancelling pending scan');
+                    this._clearTimeout('_scanTimeoutId');
+                }
+            });
+
         this._scheduleInitialScan();
     }
 
     disable() {
         this._clearTimeout('_scanTimeoutId');
 
+        if (this._sleepSignalId) {
+            Gio.DBus.system.signal_unsubscribe(this._sleepSignalId);
+            this._sleepSignalId = 0;
+        }
         if (this._startupCompleteId) {
             Main.layoutManager.disconnect(this._startupCompleteId);
             this._startupCompleteId = 0;
