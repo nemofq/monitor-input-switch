@@ -55,7 +55,7 @@ Coming soon.
 
 **Mitigations:**
 
-- **15-second buffer before scanning:** Both the first scan (after `startup-complete`) and scans triggered by `monitors-changed` wait 15 seconds to let hardware fully settle and avoid firing during hotplug event bursts.
+- **30-second buffer before scanning:** Both the first scan (after `startup-complete`) and scans triggered by `monitors-changed` wait 30 seconds to let hardware fully settle and avoid firing during hotplug event bursts.
 
 ## Contributing
 

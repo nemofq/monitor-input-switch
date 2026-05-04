@@ -12,6 +12,11 @@ import { Ddcutil } from './ddcutil.js';
 const ICON = 'video-display-symbolic';
 const MONITORS_CHANGED_SETTLE_MS = 30000;
 
+// Sysfs reflects HPD immediately and costs essentially nothing to read, so on
+// unplug we can hide the tile in ~2s instead of waiting the full scan. Hide-
+// only — showing/updating still requires ddcutil to identify the bus.
+const EAGER_HIDE_DELAY_MS = 2000;
+
 // Keep in sync with INPUT_KEYS/inputTitle in prefs.js
 const INPUTS = [
     { code: '0x11', label: 'HDMI',        key: 'show-hdmi' },
@@ -95,9 +100,15 @@ export default class MonitorInputSwitchExtension extends Extension {
             Gio.DBusSignalFlags.NONE,
             (_conn, _sender, _path, _iface, _signal, params) => {
                 const [aboutToSleep] = params.deep_unpack();
-                if (aboutToSleep && this._scanTimeoutId) {
+                if (!aboutToSleep)
+                    return;
+                if (this._scanTimeoutId) {
                     console.log('[monitor-input-switch] PrepareForSleep: cancelling pending scan');
                     this._clearTimeout('_scanTimeoutId');
+                }
+                if (this._eagerHideId) {
+                    console.log('[monitor-input-switch] PrepareForSleep: cancelling pending eager hide');
+                    this._clearTimeout('_eagerHideId');
                 }
             });
 
@@ -106,6 +117,7 @@ export default class MonitorInputSwitchExtension extends Extension {
 
     disable() {
         this._clearTimeout('_scanTimeoutId');
+        this._clearTimeout('_eagerHideId');
 
         if (this._sleepSignalId) {
             Gio.DBus.system.signal_unsubscribe(this._sleepSignalId);
@@ -148,6 +160,7 @@ export default class MonitorInputSwitchExtension extends Extension {
 
     _onMonitorsChanged() {
         this._scheduleScan();
+        this._scheduleEagerHide();
     }
 
     // Debounce: scanning before the monitor and host finish negotiating can cause race condition issues.
@@ -159,6 +172,27 @@ export default class MonitorInputSwitchExtension extends Extension {
                 this._scan();
                 return GLib.SOURCE_REMOVE;
             });
+    }
+
+    _scheduleEagerHide() {
+        this._clearTimeout('_eagerHideId');
+        this._eagerHideId = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT, EAGER_HIDE_DELAY_MS, () => {
+                this._eagerHideId = 0;
+                this._eagerHide();
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    async _eagerHide() {
+        if (!this._ddcutil || !this._currentBus)
+            return;
+        const hasExternal = await this._ddcutil.hasExternalDisplay();
+        if (!this._ddcutil || hasExternal)
+            return;
+        console.log('[monitor-input-switch] eager hide: no external display, hiding tile');
+        this._currentBus = null;
+        this._refreshTile();
     }
 
     async _scan() {

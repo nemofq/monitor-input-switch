@@ -79,7 +79,7 @@ export class Ddcutil {
         }
     }
 
-    async _hasExternalDisplay() {
+    async hasExternalDisplay() {
         console.log('[monitor-input-switch] sysfs pre-check: scanning /sys/class/drm');
         let enumerator;
         try {
@@ -116,7 +116,7 @@ export class Ddcutil {
     }
 
     async detect() {
-        if (!(await this._hasExternalDisplay()))
+        if (!(await this.hasExternalDisplay()))
             return {};
         if (this._cancellable.is_cancelled())
             return {};
