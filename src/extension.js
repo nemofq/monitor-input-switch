@@ -88,9 +88,10 @@ export default class MonitorInputSwitchExtension extends Extension {
         this._monitorsChangedId = Main.layoutManager.connect(
             'monitors-changed', () => this._onMonitorsChanged());
 
-        // Cancel any pending scan when the system is about to suspend.
-        // A scan firing into the suspend window has been observed to coincide
-        // with mutter hangs that block lid-close suspend.
+        // Cancel any pending scan and kill any in-flight ddcutil when the
+        // system is about to suspend. A scan firing or running into the suspend
+        // window has been observed to coincide with mutter hangs that block
+        // lid-close suspend.
         this._sleepSignalId = Gio.DBus.system.signal_subscribe(
             'org.freedesktop.login1',
             'org.freedesktop.login1.Manager',
@@ -110,6 +111,7 @@ export default class MonitorInputSwitchExtension extends Extension {
                     console.log('[monitor-input-switch] PrepareForSleep: cancelling pending eager hide');
                     this._clearTimeout('_eagerHideId');
                 }
+                this._ddcutil?.cancelInFlight();
             });
 
         this._scheduleInitialScan();

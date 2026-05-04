@@ -41,6 +41,7 @@ export class Ddcutil {
         }
         this._lock = new Lock();
         this._cancellable = new Gio.Cancellable();
+        this._currentProc = null;
         this._launcher = new Gio.SubprocessLauncher({
             flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE,
         });
@@ -52,6 +53,18 @@ export class Ddcutil {
         this._launcher = null;
     }
 
+    // Force-kill an in-flight ddcutil subprocess. Used by PrepareForSleep so a
+    // scan that is already mid-execution doesn't trail into the suspend window
+    // holding the I2C bus. force_exit (SIGKILL) is the only signal strong enough
+    // to halt ddcutil mid-DDC-transaction; cancelling the cancellable alone
+    // would only abort our await, not the subprocess.
+    cancelInFlight() {
+        if (!this._currentProc)
+            return;
+        console.log('[monitor-input-switch] cancelInFlight: force-exiting in-flight ddcutil subprocess');
+        try { this._currentProc.force_exit(); } catch (_e) {}
+    }
+
     async _run(argv) {
         await this._lock.acquire();
         let proc = null;
@@ -60,6 +73,7 @@ export class Ddcutil {
             if (this._cancellable.is_cancelled() || !this._launcher)
                 return null;
             proc = this._launcher.spawnv(argv);
+            this._currentProc = proc;
             timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SUBPROCESS_TIMEOUT_MS, () => {
                 timeoutId = 0;
                 console.log(`[monitor-input-switch] subprocess timeout after ${SUBPROCESS_TIMEOUT_MS}ms, killing: ${argv[0]}`);
@@ -75,6 +89,7 @@ export class Ddcutil {
                 GLib.source_remove(timeoutId);
                 timeoutId = 0;
             }
+            this._currentProc = null;
             this._lock.release();
         }
     }
