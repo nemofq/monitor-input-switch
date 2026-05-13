@@ -17,12 +17,13 @@ const MONITORS_CHANGED_SETTLE_MS = 30000;
 // only — showing/updating still requires ddcutil to identify the bus.
 const EAGER_HIDE_DELAY_MS = 2000;
 
-// Keep in sync with INPUT_KEYS/inputTitle in prefs.js
+// Keep in sync with INPUTS/inputTitle in prefs.js
 const INPUTS = [
-    { code: '0x11', label: 'HDMI',        key: 'show-hdmi' },
-    { code: '0x0f', label: 'DisplayPort', key: 'show-dp'   },
-    { code: '0x1b', label: 'USB-C',       key: 'show-usbc' },
+    { defaultCode: '0x11', label: 'HDMI',        key: 'show-hdmi', codeKey: 'input-code-hdmi' },
+    { defaultCode: '0x0f', label: 'DisplayPort', key: 'show-dp',   codeKey: 'input-code-dp'   },
+    { defaultCode: '0x1b', label: 'USB-C',       key: 'show-usbc', codeKey: 'input-code-usbc' },
 ];
+const INPUT_CODE_RE = /^(?:0x[0-9a-fA-F]+|\d+)$/;
 
 const InputTile = GObject.registerClass(
 class InputTile extends QuickMenuToggle {
@@ -80,11 +81,13 @@ export default class MonitorInputSwitchExtension extends Extension {
         this._settingsSignals = [
             this._settings.connect('changed::rescan-trigger', () => this._scan()),
             this._settings.connect('changed::target-bus', () => this._onTargetBusChanged()),
-            this._settings.connect('changed::show-hdmi', () => this._refreshTile()),
-            this._settings.connect('changed::show-dp', () => this._refreshTile()),
-            this._settings.connect('changed::show-usbc', () => this._refreshTile()),
         ];
-
+        for (const { key, codeKey } of INPUTS) {
+            this._settingsSignals.push(
+                this._settings.connect(`changed::${key}`, () => this._refreshTile()));
+            this._settingsSignals.push(
+                this._settings.connect(`changed::${codeKey}`, () => this._refreshTile()));
+        }
         this._monitorsChangedId = Main.layoutManager.connect(
             'monitors-changed', () => this._onMonitorsChanged());
 
@@ -200,19 +203,23 @@ export default class MonitorInputSwitchExtension extends Extension {
     async _scan() {
         if (!this._ddcutil)
             return;
-        const monitors = await this._ddcutil.detect();
-        if (!this._ddcutil)
-            return;
-        this._monitors = monitors;
-        this._settings.set_string('detected-monitors', JSON.stringify(monitors));
+        try {
+            const monitors = await this._ddcutil.detect();
+            if (!this._ddcutil)
+                return;
+            this._monitors = monitors;
+            this._settings.set_string('detected-monitors', JSON.stringify(monitors));
 
-        const buses = Object.keys(monitors);
-        const preferred = this._settings.get_string('target-bus');
-        this._currentBus = buses.includes(preferred) ? preferred : (buses[0] ?? null);
-        if (this._currentBus !== preferred)
-            this._settings.set_string('target-bus', this._currentBus ?? '');
+            const buses = Object.keys(monitors);
+            const preferred = this._settings.get_string('target-bus');
+            this._currentBus = buses.includes(preferred) ? preferred : (buses[0] ?? null);
+            if (this._currentBus !== preferred)
+                this._settings.set_string('target-bus', this._currentBus ?? '');
 
-        this._refreshTile();
+            this._refreshTile();
+        } catch (e) {
+            console.log(`[monitor-input-switch] scan failed: ${e}`);
+        }
     }
 
     _onTargetBusChanged() {
@@ -233,20 +240,37 @@ export default class MonitorInputSwitchExtension extends Extension {
         }
         tile.visible = true;
         tile.reactive = true;
-        tile.setMonitorName(this._monitors[this._currentBus] ?? '');
+        tile.setMonitorName(this._monitorName(this._currentBus));
         tile.rebuildMenu(this._visibleInputs());
     }
 
     _visibleInputs() {
-        return INPUTS.filter(i => this._settings.get_boolean(i.key));
+        return INPUTS
+            .filter(i => this._settings.get_boolean(i.key))
+            .map(i => ({ ...i, code: this._inputCode(i) }));
+    }
+
+    _inputCode(input) {
+        const code = this._settings.get_string(input.codeKey).trim();
+        return INPUT_CODE_RE.test(code) ? code : input.defaultCode;
+    }
+
+    _monitorName(key) {
+        const monitor = this._monitors?.[key];
+        if (typeof monitor === 'string')
+            return monitor;
+        return monitor?.name ?? '';
     }
 
     async setInput(code) {
         if (!this._currentBus || !this._ddcutil)
             return;
-        const input = INPUTS.find(i => i.code === code);
-        console.log(`[monitor-input-switch] setvcp: bus=${this._currentBus} input=${input?.label ?? code} (code=${code})`);
-        await this._ddcutil.setInput(this._currentBus, code);
+        const input = INPUTS.find(i => this._inputCode(i) === code);
+        const monitor = this._monitors[this._currentBus] ?? this._currentBus;
+        const display = typeof monitor === 'object' ? monitor.display : null;
+        const bus = typeof monitor === 'object' ? monitor.bus : this._currentBus;
+        console.log(`[monitor-input-switch] setvcp: display=${display ?? 'n/a'} bus=${bus ?? 'n/a'} input=${input?.label ?? code} (code=${code})`);
+        await this._ddcutil.setInput(monitor, code);
     }
 
     _clearTimeout(prop) {

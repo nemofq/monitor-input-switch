@@ -146,13 +146,19 @@ export class Ddcutil {
         return monitors;
     }
 
-    async setInput(bus, code) {
-        await this._run(['ddcutil', '--bus', bus, 'setvcp', '60', code, '--noverify']);
+    async setInput(monitor, code) {
+        const target = typeof monitor === 'object' && monitor !== null ? monitor : { bus: monitor };
+        if (target.display) {
+            await this._run(['ddcutil', '--display', target.display, 'setvcp', '60', code, '--noverify']);
+        } else if (target.bus) {
+            await this._run(['ddcutil', '--bus', target.bus, 'setvcp', '60', code, '--noverify']);
+        }
     }
 
     _parseDetect(stdout) {
         const monitors = {};
         for (const block of stdout.split(/\n\n/)) {
+            let display = null;
             let bus = null;
             let name = null;
             let started = false;
@@ -160,8 +166,11 @@ export class Ddcutil {
                 if (!started) {
                     if (line.startsWith('Invalid display') || line.startsWith('Phantom display'))
                         break;
-                    if (line.startsWith('Display '))
+                    const m = line.match(/^Display\s+(\d+)/);
+                    if (m) {
+                        display = m[1];
                         started = true;
+                    }
                     continue;
                 }
                 const t = line.trim();
@@ -173,8 +182,14 @@ export class Ddcutil {
                     name = this._friendlyName(t.substring(t.indexOf(':') + 1).trim());
                 }
             }
-            if (bus)
-                monitors[bus] = name || `Bus ${bus}`;
+            if (bus || display) {
+                const key = bus || `display-${display}`;
+                monitors[key] = {
+                    bus,
+                    display,
+                    name: name || (bus ? `Bus ${bus}` : `Display ${display}`),
+                };
+            }
         }
         return monitors;
     }
