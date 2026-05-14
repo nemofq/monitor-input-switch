@@ -30,26 +30,6 @@ function parseMonitors(json) {
     }
 }
 
-function monitorName(key, monitor) {
-    if (typeof monitor === 'string')
-        return monitor;
-    return monitor?.name || monitor?.display || key;
-}
-
-function monitorLabel(key, monitor) {
-    if (typeof monitor === 'string')
-        return monitor;
-
-    const details = [];
-    if (monitor?.display)
-        details.push(`Display ${monitor.display}`);
-    if (monitor?.bus)
-        details.push(`i2c-${monitor.bus}`);
-
-    const name = monitorName(key, monitor);
-    return details.length ? `${name} (${details.join(', ')})` : name;
-}
-
 export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
@@ -92,8 +72,8 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
                 combo.sensitive = false;
             } else {
                 combo.sensitive = true;
-                for (const [bus, monitor] of entries) {
-                    model.append(monitorLabel(bus, monitor));
+                for (const [bus, name] of entries) {
+                    model.append(name);
                     buses.push(bus);
                 }
                 const target = settings.get_string('target-bus');

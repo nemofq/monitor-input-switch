@@ -203,23 +203,19 @@ export default class MonitorInputSwitchExtension extends Extension {
     async _scan() {
         if (!this._ddcutil)
             return;
-        try {
-            const monitors = await this._ddcutil.detect();
-            if (!this._ddcutil)
-                return;
-            this._monitors = monitors;
-            this._settings.set_string('detected-monitors', JSON.stringify(monitors));
+        const monitors = await this._ddcutil.detect();
+        if (!this._ddcutil)
+            return;
+        this._monitors = monitors;
+        this._settings.set_string('detected-monitors', JSON.stringify(monitors));
 
-            const buses = Object.keys(monitors);
-            const preferred = this._settings.get_string('target-bus');
-            this._currentBus = buses.includes(preferred) ? preferred : (buses[0] ?? null);
-            if (this._currentBus !== preferred)
-                this._settings.set_string('target-bus', this._currentBus ?? '');
+        const buses = Object.keys(monitors);
+        const preferred = this._settings.get_string('target-bus');
+        this._currentBus = buses.includes(preferred) ? preferred : (buses[0] ?? null);
+        if (this._currentBus !== preferred)
+            this._settings.set_string('target-bus', this._currentBus ?? '');
 
-            this._refreshTile();
-        } catch (e) {
-            console.log(`[monitor-input-switch] scan failed: ${e}`);
-        }
+        this._refreshTile();
     }
 
     _onTargetBusChanged() {
@@ -240,7 +236,7 @@ export default class MonitorInputSwitchExtension extends Extension {
         }
         tile.visible = true;
         tile.reactive = true;
-        tile.setMonitorName(this._monitorName(this._currentBus));
+        tile.setMonitorName(this._monitors[this._currentBus] ?? '');
         tile.rebuildMenu(this._visibleInputs());
     }
 
@@ -255,22 +251,12 @@ export default class MonitorInputSwitchExtension extends Extension {
         return INPUT_CODE_RE.test(code) ? code : input.defaultCode;
     }
 
-    _monitorName(key) {
-        const monitor = this._monitors?.[key];
-        if (typeof monitor === 'string')
-            return monitor;
-        return monitor?.name ?? '';
-    }
-
     async setInput(code) {
         if (!this._currentBus || !this._ddcutil)
             return;
         const input = INPUTS.find(i => this._inputCode(i) === code);
-        const monitor = this._monitors[this._currentBus] ?? this._currentBus;
-        const display = typeof monitor === 'object' ? monitor.display : null;
-        const bus = typeof monitor === 'object' ? monitor.bus : this._currentBus;
-        console.log(`[monitor-input-switch] setvcp: display=${display ?? 'n/a'} bus=${bus ?? 'n/a'} input=${input?.label ?? code} (code=${code})`);
-        await this._ddcutil.setInput(monitor, code);
+        console.log(`[monitor-input-switch] setvcp: bus=${this._currentBus} input=${input?.label ?? code} (code=${code})`);
+        await this._ddcutil.setInput(this._currentBus, code);
     }
 
     _clearTimeout(prop) {
