@@ -8,6 +8,7 @@ A GNOME Shell extension that switches an external monitor's input source via `dd
 - Switch to HDMI (`0x11`), DisplayPort (`0x0f`), USB-C (`0x1b`) via DDC/CI VCP code `0x60`
 - Choose one target monitor if multiple detected
 - Customize which inputs to show
+- Expand each input in preferences to customize its DDC input ID for monitors with non-standard values
 
 ## Requirements
 

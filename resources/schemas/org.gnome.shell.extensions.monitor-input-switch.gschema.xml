@@ -21,13 +21,28 @@
       <default>true</default>
       <summary>Show HDMI (0x11) in the tile menu</summary>
     </key>
+    <key name="input-code-hdmi" type="s">
+      <default>""</default>
+      <summary>DDC input ID for HDMI</summary>
+      <description>Value passed to ddcutil setvcp 60 when switching to HDMI. Empty uses the built-in default.</description>
+    </key>
     <key name="show-dp" type="b">
       <default>true</default>
       <summary>Show DisplayPort (0x0f) in the tile menu</summary>
     </key>
+    <key name="input-code-dp" type="s">
+      <default>""</default>
+      <summary>DDC input ID for DisplayPort</summary>
+      <description>Value passed to ddcutil setvcp 60 when switching to DisplayPort. Empty uses the built-in default.</description>
+    </key>
     <key name="show-usbc" type="b">
       <default>true</default>
       <summary>Show USB-C (0x1b) in the tile menu</summary>
+    </key>
+    <key name="input-code-usbc" type="s">
+      <default>""</default>
+      <summary>DDC input ID for USB-C</summary>
+      <description>Value passed to ddcutil setvcp 60 when switching to USB-C. Empty uses the built-in default.</description>
     </key>
   </schema>
 </schemalist>

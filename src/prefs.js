@@ -4,17 +4,7 @@ import Gtk from 'gi://Gtk';
 
 import { ExtensionPreferences, gettext as _ } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-// Keep in sync with INPUTS in extension.js
-const INPUT_KEYS = ['show-hdmi', 'show-dp', 'show-usbc'];
-
-function inputTitle(key) {
-    switch (key) {
-        case 'show-hdmi': return 'HDMI';
-        case 'show-dp':   return 'DisplayPort';
-        case 'show-usbc': return 'USB-C';
-        default:          return key;
-    }
-}
+import { INPUTS, normalizeInputCode } from './inputs.js';
 
 function parseMonitors(json) {
     try {
@@ -115,23 +105,77 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
             description: _('At least one input must stay enabled.'),
         });
 
-        const rows = INPUT_KEYS.map(key => {
-            const row = new Adw.SwitchRow({
-                title: inputTitle(key),
-                active: settings.get_boolean(key),
+        const rows = INPUTS.map(input => {
+            const row = new Adw.ExpanderRow({
+                title: input.label,
+                showEnableSwitch: true,
+                enableExpansion: settings.get_boolean(input.key),
             });
-            row._key = key;
+            row._input = input;
+            row._syncing = false;
+
+            const entry = new Adw.EntryRow({
+                title: _('Custom DDC code (hex or decimal, 0–255)'),
+                text: settings.get_string(input.codeKey),
+                placeholderText: `${_('Default')} ${input.defaultCode}`,
+            });
+
+            const resetBtn = new Gtk.Button({
+                iconName: 'edit-undo-symbolic',
+                valign: Gtk.Align.CENTER,
+                cssClasses: ['flat'],
+                tooltipText: _('Restore default'),
+            });
+            resetBtn.connect('clicked', () => {
+                row._syncing = true;
+                entry.text = '';
+                row._syncing = false;
+                entry.remove_css_class('error');
+                if (settings.get_string(input.codeKey) !== '')
+                    settings.set_string(input.codeKey, '');
+            });
+            entry.add_suffix(resetBtn);
+
+            entry.connect('changed', () => {
+                if (row._syncing)
+                    return;
+                const text = entry.text.trim();
+                if (text === '') {
+                    entry.remove_css_class('error');
+                    if (settings.get_string(input.codeKey) !== '')
+                        settings.set_string(input.codeKey, '');
+                    return;
+                }
+                const normalized = normalizeInputCode(text);
+                if (normalized === null) {
+                    entry.add_css_class('error');
+                    return;
+                }
+                entry.remove_css_class('error');
+                if (settings.get_string(input.codeKey) !== normalized)
+                    settings.set_string(input.codeKey, normalized);
+            });
+
+            row.add_row(entry);
+            row._entry = entry;
             return row;
         });
 
-        const countActive = () => rows.filter(r => r.active).length;
+        const countActive = () => rows.filter(r => r.enableExpansion).length;
 
         for (const row of rows) {
-            row.connect('notify::active', () => {
-                if (!row.active && countActive() < 1) {
+            const input = row._input;
+
+            row.connect('notify::enable-expansion', () => {
+                if (row._syncing)
+                    return;
+                const active = row.enableExpansion;
+                if (!active && countActive() < 1) {
                     const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 350, () => {
                         timerIds.delete(id);
-                        row.active = true;
+                        row._syncing = true;
+                        row.enableExpansion = true;
+                        row._syncing = false;
                         return GLib.SOURCE_REMOVE;
                     });
                     timerIds.add(id);
@@ -141,16 +185,32 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
                     }));
                     return;
                 }
-                if (settings.get_boolean(row._key) !== row.active)
-                    settings.set_boolean(row._key, row.active);
+                if (settings.get_boolean(input.key) !== active)
+                    settings.set_boolean(input.key, active);
             });
-            signalIds.push(settings.connect(`changed::${row._key}`, () => {
-                const val = settings.get_boolean(row._key);
-                if (row.active !== val)
-                    row.active = val;
+
+            signalIds.push(settings.connect(`changed::${input.key}`, () => {
+                const val = settings.get_boolean(input.key);
+                if (row.enableExpansion !== val) {
+                    row._syncing = true;
+                    row.enableExpansion = val;
+                    row._syncing = false;
+                }
             }));
+
+            signalIds.push(settings.connect(`changed::${input.codeKey}`, () => {
+                const text = settings.get_string(input.codeKey);
+                if (row._entry.text !== text) {
+                    row._syncing = true;
+                    row._entry.text = text;
+                    row._syncing = false;
+                }
+                row._entry.remove_css_class('error');
+            }));
+
             group.add(row);
         }
+
         return group;
     }
 }

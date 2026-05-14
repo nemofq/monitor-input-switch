@@ -8,6 +8,7 @@ import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/
 import { QuickMenuToggle, SystemIndicator } from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
 import { Ddcutil } from './ddcutil.js';
+import { INPUTS, normalizeInputCode } from './inputs.js';
 
 const ICON = 'video-display-symbolic';
 const MONITORS_CHANGED_SETTLE_MS = 30000;
@@ -16,13 +17,6 @@ const MONITORS_CHANGED_SETTLE_MS = 30000;
 // unplug we can hide the tile in ~2s instead of waiting the full scan. Hide-
 // only — showing/updating still requires ddcutil to identify the bus.
 const EAGER_HIDE_DELAY_MS = 2000;
-
-// Keep in sync with INPUT_KEYS/inputTitle in prefs.js
-const INPUTS = [
-    { code: '0x11', label: 'HDMI',        key: 'show-hdmi' },
-    { code: '0x0f', label: 'DisplayPort', key: 'show-dp'   },
-    { code: '0x1b', label: 'USB-C',       key: 'show-usbc' },
-];
 
 const InputTile = GObject.registerClass(
 class InputTile extends QuickMenuToggle {
@@ -49,9 +43,9 @@ class InputTile extends QuickMenuToggle {
 
     rebuildMenu(visibleInputs) {
         this._itemsSection.removeAll();
-        for (const { code, label } of visibleInputs) {
-            const item = new PopupMenu.PopupMenuItem(label);
-            item.connect('activate', () => this._extension.setInput(code));
+        for (const input of visibleInputs) {
+            const item = new PopupMenu.PopupMenuItem(input.label);
+            item.connect('activate', () => this._extension.setInput(input));
             this._itemsSection.addMenuItem(item);
         }
     }
@@ -80,11 +74,13 @@ export default class MonitorInputSwitchExtension extends Extension {
         this._settingsSignals = [
             this._settings.connect('changed::rescan-trigger', () => this._scan()),
             this._settings.connect('changed::target-bus', () => this._onTargetBusChanged()),
-            this._settings.connect('changed::show-hdmi', () => this._refreshTile()),
-            this._settings.connect('changed::show-dp', () => this._refreshTile()),
-            this._settings.connect('changed::show-usbc', () => this._refreshTile()),
         ];
-
+        for (const { key, codeKey } of INPUTS) {
+            this._settingsSignals.push(
+                this._settings.connect(`changed::${key}`, () => this._refreshTile()));
+            this._settingsSignals.push(
+                this._settings.connect(`changed::${codeKey}`, () => this._refreshTile()));
+        }
         this._monitorsChangedId = Main.layoutManager.connect(
             'monitors-changed', () => this._onMonitorsChanged());
 
@@ -241,11 +237,15 @@ export default class MonitorInputSwitchExtension extends Extension {
         return INPUTS.filter(i => this._settings.get_boolean(i.key));
     }
 
-    async setInput(code) {
+    _inputCode(input) {
+        return normalizeInputCode(this._settings.get_string(input.codeKey)) ?? input.defaultCode;
+    }
+
+    async setInput(input) {
         if (!this._currentBus || !this._ddcutil)
             return;
-        const input = INPUTS.find(i => i.code === code);
-        console.log(`[monitor-input-switch] setvcp: bus=${this._currentBus} input=${input?.label ?? code} (code=${code})`);
+        const code = this._inputCode(input);
+        console.log(`[monitor-input-switch] setvcp: bus=${this._currentBus} input=${input.label} (code=${code})`);
         await this._ddcutil.setInput(this._currentBus, code);
     }
 
