@@ -4,23 +4,7 @@ import Gtk from 'gi://Gtk';
 
 import { ExtensionPreferences, gettext as _ } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-// Keep in sync with INPUTS in extension.js
-const INPUTS = [
-    { defaultCode: '0x11', key: 'show-hdmi', codeKey: 'input-code-hdmi' },
-    { defaultCode: '0x0f', key: 'show-dp',   codeKey: 'input-code-dp'   },
-    { defaultCode: '0x1b', key: 'show-usbc', codeKey: 'input-code-usbc' },
-];
-
-const INPUT_CODE_RE = /^(?:0x[0-9a-fA-F]+|\d+)$/;
-
-function inputTitle(key) {
-    switch (key) {
-        case 'show-hdmi': return 'HDMI';
-        case 'show-dp':   return 'DisplayPort';
-        case 'show-usbc': return 'USB-C';
-        default:          return key;
-    }
-}
+import { INPUTS, normalizeInputCode } from './inputs.js';
 
 function parseMonitors(json) {
     try {
@@ -123,64 +107,75 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
 
         const rows = INPUTS.map(input => {
             const row = new Adw.ExpanderRow({
-                title: inputTitle(input.key),
+                title: input.label,
+                showEnableSwitch: true,
+                enableExpansion: settings.get_boolean(input.key),
             });
-            row._syncingCode = false;
-            const toggle = new Gtk.Switch({
-                active: settings.get_boolean(input.key),
-                valign: Gtk.Align.CENTER,
-            });
+            row._input = input;
+            row._syncing = false;
 
             const entry = new Adw.EntryRow({
-                title: _('DDC input ID'),
-                text: this._inputCodeText(settings, input),
+                title: _('Custom DDC code (hex or decimal, 0–255)'),
+                text: settings.get_string(input.codeKey),
+                placeholderText: `${_('Default')} ${input.defaultCode}`,
             });
+
             const resetBtn = new Gtk.Button({
-                iconName: 'edit-clear-symbolic',
+                iconName: 'edit-undo-symbolic',
                 valign: Gtk.Align.CENTER,
                 cssClasses: ['flat'],
-                tooltipText: _('Use default DDC input ID'),
+                tooltipText: _('Restore default'),
             });
             resetBtn.connect('clicked', () => {
-                settings.set_string(input.codeKey, '');
-                row._syncingCode = true;
-                entry.text = input.defaultCode;
-                row._syncingCode = false;
+                row._syncing = true;
+                entry.text = '';
+                row._syncing = false;
                 entry.remove_css_class('error');
+                if (settings.get_string(input.codeKey) !== '')
+                    settings.set_string(input.codeKey, '');
             });
             entry.add_suffix(resetBtn);
-            entry.connect('changed', () => {
-                if (row._syncingCode)
-                    return;
 
-                const code = entry.text.trim();
-                if (!INPUT_CODE_RE.test(code)) {
+            entry.connect('changed', () => {
+                if (row._syncing)
+                    return;
+                const text = entry.text.trim();
+                if (text === '') {
+                    entry.remove_css_class('error');
+                    if (settings.get_string(input.codeKey) !== '')
+                        settings.set_string(input.codeKey, '');
+                    return;
+                }
+                const normalized = normalizeInputCode(text);
+                if (normalized === null) {
                     entry.add_css_class('error');
                     return;
                 }
-
                 entry.remove_css_class('error');
-                if (settings.get_string(input.codeKey) !== code)
-                    settings.set_string(input.codeKey, code);
+                if (settings.get_string(input.codeKey) !== normalized)
+                    settings.set_string(input.codeKey, normalized);
             });
 
-            row.add_suffix(toggle);
             row.add_row(entry);
             row._entry = entry;
-            row._switch = toggle;
-            row._key = input.key;
-            row._input = input;
             return row;
         });
 
-        const countActive = () => rows.filter(r => r._switch.active).length;
+        const countActive = () => rows.filter(r => r.enableExpansion).length;
 
         for (const row of rows) {
-            row._switch.connect('notify::active', () => {
-                if (!row._switch.active && countActive() < 1) {
+            const input = row._input;
+
+            row.connect('notify::enable-expansion', () => {
+                if (row._syncing)
+                    return;
+                const active = row.enableExpansion;
+                if (!active && countActive() < 1) {
                     const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 350, () => {
                         timerIds.delete(id);
-                        row._switch.active = true;
+                        row._syncing = true;
+                        row.enableExpansion = true;
+                        row._syncing = false;
                         return GLib.SOURCE_REMOVE;
                     });
                     timerIds.add(id);
@@ -190,30 +185,32 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
                     }));
                     return;
                 }
-                if (settings.get_boolean(row._key) !== row._switch.active)
-                    settings.set_boolean(row._key, row._switch.active);
+                if (settings.get_boolean(input.key) !== active)
+                    settings.set_boolean(input.key, active);
             });
-            signalIds.push(settings.connect(`changed::${row._key}`, () => {
-                const val = settings.get_boolean(row._key);
-                if (row._switch.active !== val)
-                    row._switch.active = val;
+
+            signalIds.push(settings.connect(`changed::${input.key}`, () => {
+                const val = settings.get_boolean(input.key);
+                if (row.enableExpansion !== val) {
+                    row._syncing = true;
+                    row.enableExpansion = val;
+                    row._syncing = false;
+                }
             }));
-            signalIds.push(settings.connect(`changed::${row._input.codeKey}`, () => {
-                const text = this._inputCodeText(settings, row._input);
+
+            signalIds.push(settings.connect(`changed::${input.codeKey}`, () => {
+                const text = settings.get_string(input.codeKey);
                 if (row._entry.text !== text) {
-                    row._syncingCode = true;
+                    row._syncing = true;
                     row._entry.text = text;
-                    row._syncingCode = false;
+                    row._syncing = false;
                 }
                 row._entry.remove_css_class('error');
             }));
+
             group.add(row);
         }
 
         return group;
-    }
-
-    _inputCodeText(settings, input) {
-        return settings.get_string(input.codeKey).trim() || input.defaultCode;
     }
 }
