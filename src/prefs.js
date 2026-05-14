@@ -115,9 +115,9 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
             row._syncing = false;
 
             const entry = new Adw.EntryRow({
-                title: _('Custom DDC code (hex or decimal, 0–255)'),
+                title: _('Custom DDC code (default %s)').replace('%s', input.defaultCode),
                 text: settings.get_string(input.codeKey),
-                placeholderText: `${_('Default')} ${input.defaultCode}`,
+                tooltipText: _('Hex (e.g. 0x11) or decimal, 0–255'),
             });
 
             const resetBtn = new Gtk.Button({
