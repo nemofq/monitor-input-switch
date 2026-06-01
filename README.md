@@ -19,7 +19,7 @@ A GNOME Shell extension that switches an external monitor's input source via `dd
 
 ### From Gnome Extensions (Recommended)
 
-Coming soon.
+https://extensions.gnome.org/extension/9768/monitor-input-switch/
 
 ### From Latest GitHub Release
 
