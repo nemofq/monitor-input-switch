@@ -34,6 +34,11 @@ class InputTile extends QuickMenuToggle {
         this.menu.addAction(_('Settings'), () => extension.openPreferences());
 
         this.connect('clicked', () => this.menu.open());
+
+        this.connect('destroy', () => {
+            this._itemsSection = null;
+            this._extension = null;
+        });
     }
 
     setMonitorName(name) {
@@ -71,18 +76,18 @@ export default class MonitorInputSwitchExtension extends Extension {
         this._indicator.tile.visible = false;
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
 
-        this._settingsSignals = [
-            this._settings.connect('changed::rescan-trigger', () => this._scan()),
-            this._settings.connect('changed::target-bus', () => this._onTargetBusChanged()),
-        ];
+        this._settings.connectObject(
+            'changed::rescan-trigger', () => this._scan(),
+            'changed::target-bus', () => this._onTargetBusChanged(),
+            this);
         for (const { key, codeKey } of INPUTS) {
-            this._settingsSignals.push(
-                this._settings.connect(`changed::${key}`, () => this._refreshTile()));
-            this._settingsSignals.push(
-                this._settings.connect(`changed::${codeKey}`, () => this._refreshTile()));
+            this._settings.connectObject(
+                `changed::${key}`, () => this._refreshTile(),
+                `changed::${codeKey}`, () => this._refreshTile(),
+                this);
         }
-        this._monitorsChangedId = Main.layoutManager.connect(
-            'monitors-changed', () => this._onMonitorsChanged());
+        Main.layoutManager.connectObject(
+            'monitors-changed', () => this._onMonitorsChanged(), this);
 
         // Cancel any pending scan and kill any in-flight ddcutil when the
         // system is about to suspend. A scan firing or running into the suspend
@@ -114,8 +119,14 @@ export default class MonitorInputSwitchExtension extends Extension {
     }
 
     disable() {
-        this._clearTimeout('_scanTimeoutId');
-        this._clearTimeout('_eagerHideId');
+        if (this._scanTimeoutId) {
+            GLib.source_remove(this._scanTimeoutId);
+            this._scanTimeoutId = 0;
+        }
+        if (this._eagerHideId) {
+            GLib.source_remove(this._eagerHideId);
+            this._eagerHideId = 0;
+        }
 
         if (this._sleepSignalId) {
             Gio.DBus.system.signal_unsubscribe(this._sleepSignalId);
@@ -125,13 +136,8 @@ export default class MonitorInputSwitchExtension extends Extension {
             Main.layoutManager.disconnect(this._startupCompleteId);
             this._startupCompleteId = 0;
         }
-        if (this._monitorsChangedId) {
-            Main.layoutManager.disconnect(this._monitorsChangedId);
-            this._monitorsChangedId = 0;
-        }
-        for (const id of this._settingsSignals ?? [])
-            this._settings.disconnect(id);
-        this._settingsSignals = null;
+        Main.layoutManager.disconnectObject(this);
+        this._settings.disconnectObject(this);
 
         this._indicator?.quickSettingsItems.forEach(i => i.destroy());
         this._indicator?.destroy();
