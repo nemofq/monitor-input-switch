@@ -37,11 +37,15 @@ export class Ddcutil {
     constructor() {
         if (!_promisified) {
             Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async');
+            Gio._promisify(Gio.File.prototype, 'enumerate_children_async');
+            Gio._promisify(Gio.FileEnumerator.prototype, 'next_files_async');
+            Gio._promisify(Gio.File.prototype, 'load_contents_async');
             _promisified = true;
         }
         this._lock = new Lock();
         this._cancellable = new Gio.Cancellable();
         this._currentProc = null;
+        this._timeoutId = 0;
         this._launcher = new Gio.SubprocessLauncher({
             flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE,
         });
@@ -50,6 +54,10 @@ export class Ddcutil {
 
     destroy() {
         this._cancellable.cancel();
+        if (this._timeoutId) {
+            GLib.source_remove(this._timeoutId);
+            this._timeoutId = 0;
+        }
         this._launcher = null;
     }
 
@@ -68,14 +76,13 @@ export class Ddcutil {
     async _run(argv) {
         await this._lock.acquire();
         let proc = null;
-        let timeoutId = 0;
         try {
             if (this._cancellable.is_cancelled() || !this._launcher)
                 return null;
             proc = this._launcher.spawnv(argv);
             this._currentProc = proc;
-            timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SUBPROCESS_TIMEOUT_MS, () => {
-                timeoutId = 0;
+            this._timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SUBPROCESS_TIMEOUT_MS, () => {
+                this._timeoutId = 0;
                 console.log(`[monitor-input-switch] subprocess timeout after ${SUBPROCESS_TIMEOUT_MS}ms, killing: ${argv[0]}`);
                 try { proc.force_exit(); } catch (_e) {}
                 return GLib.SOURCE_REMOVE;
@@ -85,9 +92,9 @@ export class Ddcutil {
         } catch (_e) {
             return null;
         } finally {
-            if (timeoutId) {
-                GLib.source_remove(timeoutId);
-                timeoutId = 0;
+            if (this._timeoutId) {
+                GLib.source_remove(this._timeoutId);
+                this._timeoutId = 0;
             }
             this._currentProc = null;
             this._lock.release();
@@ -99,29 +106,33 @@ export class Ddcutil {
         let enumerator;
         try {
             const drmDir = Gio.File.new_for_path('/sys/class/drm');
-            enumerator = drmDir.enumerate_children(
-                'standard::name', Gio.FileQueryInfoFlags.NONE, null);
+            enumerator = await drmDir.enumerate_children_async(
+                'standard::name', Gio.FileQueryInfoFlags.NONE,
+                GLib.PRIORITY_DEFAULT, this._cancellable);
         } catch (_e) {
-            console.log('[monitor-input-switch] sysfs pre-check: sysfs read failed, falling through to ddcutil');
+            console.log('[monitor-input-switch] sysfs pre-check: enumerate failed, falling through to ddcutil');
             return true;
         }
         try {
-            let info;
-            while ((info = enumerator.next_file(null)) !== null) {
-                const name = info.get_name();
-                if (!name.includes('-')) continue;
-                if (/-(eDP|LVDS|DSI|Writeback|Virtual)-/i.test(name)) continue;
-                try {
-                    const [, contents] = GLib.file_get_contents(
-                        `/sys/class/drm/${name}/status`);
-                    if (new TextDecoder().decode(contents).trim() === 'connected') {
-                        console.log(`[monitor-input-switch] sysfs pre-check: found connected external display (${name})`);
-                        return true;
-                    }
-                } catch (_e) {}
+            let infos;
+            while ((infos = await enumerator.next_files_async(
+                    64, GLib.PRIORITY_DEFAULT, this._cancellable)).length > 0) {
+                for (const info of infos) {
+                    const name = info.get_name();
+                    if (!name.includes('-')) continue;
+                    if (/-(eDP|LVDS|DSI|Writeback|Virtual)-/i.test(name)) continue;
+                    try {
+                        const file = Gio.File.new_for_path(`/sys/class/drm/${name}/status`);
+                        const [contents] = await file.load_contents_async(this._cancellable);
+                        if (new TextDecoder().decode(contents).trim() === 'connected') {
+                            console.log(`[monitor-input-switch] sysfs pre-check: found connected external display (${name})`);
+                            return true;
+                        }
+                    } catch (_e) {}
+                }
             }
         } catch (_e) {
-            console.log('[monitor-input-switch] sysfs pre-check: sysfs read failed, falling through to ddcutil');
+            console.log('[monitor-input-switch] sysfs pre-check: iteration failed, falling through to ddcutil');
             return true;
         } finally {
             try { enumerator.close(null); } catch (_e) {}
