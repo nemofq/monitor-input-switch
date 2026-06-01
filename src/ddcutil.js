@@ -81,6 +81,11 @@ export class Ddcutil {
                 return null;
             proc = this._launcher.spawnv(argv);
             this._currentProc = proc;
+            // Remove any prior timeout before arming a new one. The Lock already
+            // serializes _run so this should be a no-op, but guarding here keeps
+            // the source non-leaking regardless of how _run is called.
+            if (this._timeoutId)
+                GLib.source_remove(this._timeoutId);
             this._timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SUBPROCESS_TIMEOUT_MS, () => {
                 this._timeoutId = 0;
                 console.log(`[monitor-input-switch] subprocess timeout after ${SUBPROCESS_TIMEOUT_MS}ms, killing: ${argv[0]}`);
