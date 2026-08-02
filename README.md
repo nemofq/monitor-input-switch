@@ -1,5 +1,7 @@
 # Monitor Input Switch
 
+![Gnome Extensions Downloads](https://img.shields.io/gnome-extensions/dt/monitor-input-switch%40nemofq.github.io)
+
 <img src="resources/images/screenshot.png" alt="Screenshot">
 
 A GNOME Shell extension that switches an external monitor's input source via `ddcutil`. Lives in the Quick Settings panel.
@@ -19,7 +21,7 @@ A GNOME Shell extension that switches an external monitor's input source via `dd
 
 ### From Gnome Extensions (Recommended)
 
-https://extensions.gnome.org/extension/9768/monitor-input-switch/
+[<img src="https://raw.githubusercontent.com/andyholmes/gnome-shell-extensions-badge/master/get-it-on-ego.svg" alt="Get it on GNOME Extensions" height="100">](https://extensions.gnome.org/extension/9768/monitor-input-switch/)
 
 ### From Latest GitHub Release
 
