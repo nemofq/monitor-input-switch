@@ -1,6 +1,6 @@
 # Monitor Input Switch
 
-![Gnome Extensions Downloads](https://img.shields.io/gnome-extensions/dt/monitor-input-switch%40nemofq.github.io)
+[![Gnome Extensions Downloads](https://img.shields.io/gnome-extensions/dt/monitor-input-switch%40nemofq.github.io)](https://extensions.gnome.org/extension/9768/monitor-input-switch/)
 
 <img src="resources/images/screenshot.png" alt="Screenshot">
 
