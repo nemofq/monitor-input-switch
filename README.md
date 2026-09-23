@@ -14,7 +14,7 @@ A GNOME Shell extension that switches an external monitor's input source via `dd
 
 ## Requirements
 
-- GNOME Shell 48, 49, or 50
+- GNOME Shell 48, 49, 50, or 51
 - `ddcutil` installed (`which ddcutil` to check) and `ddcutil detect` should list your monitor
 
 ## Install
