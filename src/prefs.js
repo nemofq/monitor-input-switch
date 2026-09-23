@@ -57,7 +57,7 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
             } else {
                 combo.sensitive = true;
                 for (const [bus, name] of entries) {
-                    model.append(name);
+                    model.append(`${name} (bus ${bus})`);
                     buses.push(bus);
                 }
                 const target = settings.get_string('target-bus');
