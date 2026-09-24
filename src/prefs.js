@@ -44,6 +44,12 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
         const buses = [];
         let syncing = false;
 
+        const updateTooltip = () => {
+            combo.tooltipText = buses.length > 0
+                ? model.get_string(combo.selected)
+                : null;
+        };
+
         const rebuild = () => {
             const monitors = parseMonitors(settings.get_string('detected-monitors'));
             syncing = true;
@@ -57,7 +63,7 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
             } else {
                 combo.sensitive = true;
                 for (const [bus, name] of entries) {
-                    model.append(`${name} (bus ${bus})`);
+                    model.append(entries.length > 1 ? `${name} (bus ${bus})` : name);
                     buses.push(bus);
                 }
                 const target = settings.get_string('target-bus');
@@ -65,9 +71,11 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
                 combo.selected = idx >= 0 ? idx : 0;
             }
             syncing = false;
+            updateTooltip();
         };
 
         combo.connect('notify::selected', () => {
+            updateTooltip();
             if (syncing || buses.length === 0)
                 return;
             const bus = buses[combo.selected];
