@@ -65,13 +65,15 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
                     sensitive: false,
                 }));
             }
-            let first = null;
+            // Never shown: a GtkCheckButton only draws as a radio (and can't
+            // be unticked) when grouped, so this keeps a lone monitor's row
+            // consistent with the multi-monitor case.
+            const anchor = new Gtk.CheckButton();
             for (const [bus, name] of entries) {
-                const check = new Gtk.CheckButton({ valign: Gtk.Align.CENTER });
-                if (first)
-                    check.group = first;
-                else
-                    first = check;
+                const check = new Gtk.CheckButton({
+                    valign: Gtk.Align.CENTER,
+                    group: anchor,
+                });
                 check.connect('toggled', () => {
                     if (syncing || !check.active)
                         return;
@@ -84,12 +86,10 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
                     activatableWidget: check,
                 });
                 row.add_prefix(check);
-                if (entries.length > 1) {
-                    row.add_suffix(new Gtk.Label({
-                        label: _('Bus %s').replace('%s', bus),
-                        cssClasses: ['dim-label'],
-                    }));
-                }
+                row.add_suffix(new Gtk.Label({
+                    label: _('Bus %s').replace('%s', bus),
+                    cssClasses: ['dim-label'],
+                }));
                 checks.set(bus, check);
                 monitorRows.push(row);
             }
