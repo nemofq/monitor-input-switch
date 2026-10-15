@@ -168,12 +168,12 @@ export default class MonitorInputSwitchExtension extends Extension {
     }
 
     // Debounce: scanning before the monitor and host finish negotiating can cause race condition issues.
-    _scheduleScan() {
+    _scheduleScan(isRetry = false) {
         this._clearTimeout('_scanTimeoutId');
         this._scanTimeoutId = GLib.timeout_add(
             GLib.PRIORITY_DEFAULT, MONITORS_CHANGED_SETTLE_MS, () => {
                 this._scanTimeoutId = 0;
-                this._scan();
+                this._scan(isRetry);
                 return GLib.SOURCE_REMOVE;
             });
     }
@@ -199,12 +199,21 @@ export default class MonitorInputSwitchExtension extends Extension {
         this._refreshTile();
     }
 
-    async _scan() {
+    async _scan(isRetry = false) {
         if (!this._ddcutil)
             return;
-        const monitors = await this._ddcutil.detect();
+        // A scan supersedes any pending one, e.g. a manual rescan replaces a queued retry.
+        this._clearTimeout('_scanTimeoutId');
+        const result = await this._ddcutil.detect();
         if (!this._ddcutil)
             return;
+        // The display is connected but didn't answer DDC, often because it is
+        // still waking up. ddcutil is expensive, so retry only once.
+        if (result === null && !isRetry) {
+            console.log(`[monitor-input-switch] connected display not detected, retrying in ${MONITORS_CHANGED_SETTLE_MS / 1000}s`);
+            this._scheduleScan(true);
+        }
+        const monitors = result ?? {};
         this._monitors = monitors;
         this._settings.set_string('detected-monitors', JSON.stringify(monitors));
 

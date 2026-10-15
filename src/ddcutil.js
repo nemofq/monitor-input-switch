@@ -8,6 +8,10 @@ let _promisified = false;
 // would silently break all future scans for the rest of the session.
 const SUBPROCESS_TIMEOUT_MS = 30000;
 
+function oneLine(text) {
+    return text?.trim().split(/\s*\n\s*/).join(' | ') || '(no output)';
+}
+
 class Lock {
     constructor() {
         this._queue = [];
@@ -47,7 +51,7 @@ export class Ddcutil {
         this._currentProc = null;
         this._timeoutId = 0;
         this._launcher = new Gio.SubprocessLauncher({
-            flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE,
+            flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
         });
         this._launcher.setenv('LC_ALL', 'C.UTF-8', true);
     }
@@ -92,9 +96,16 @@ export class Ddcutil {
                 try { proc.force_exit(); } catch (_e) {}
                 return GLib.SOURCE_REMOVE;
             });
-            const [stdout] = await proc.communicate_utf8_async(null, this._cancellable);
-            return proc.get_successful() ? stdout : null;
-        } catch (_e) {
+            const [stdout, stderr] = await proc.communicate_utf8_async(null, this._cancellable);
+            if (proc.get_successful())
+                return stdout;
+            const status = proc.get_if_signaled()
+                ? `killed by signal ${proc.get_term_sig()}`
+                : `exit status ${proc.get_exit_status()}`;
+            console.log(`[monitor-input-switch] ${argv.join(' ')} failed (${status}): ${oneLine(stderr)}`);
+            return null;
+        } catch (e) {
+            console.log(`[monitor-input-switch] ${argv.join(' ')} failed: ${e.message}`);
             return null;
         } finally {
             if (this._timeoutId) {
@@ -146,6 +157,8 @@ export class Ddcutil {
         return false;
     }
 
+    // Returns null when sysfs reports a connected external display but ddcutil
+    // found no usable monitor on it, so the caller can tell it apart from none.
     async detect() {
         if (!(await this.hasExternalDisplay()))
             return {};
@@ -159,7 +172,13 @@ export class Ddcutil {
         const monitors = this._parseDetect(stdout || '');
         const count = Object.keys(monitors).length;
         console.log(`[monitor-input-switch] ddcutil detect: found ${count} monitor(s)`);
-        return monitors;
+        if (count)
+            return monitors;
+        // Terse output gives no failure reason, but shows whether the display
+        // was seen at all and on which bus.
+        for (const block of (stdout || '').split(/\n\n+/).filter(b => b.trim()))
+            console.log(`[monitor-input-switch] ddcutil detect: ${oneLine(block)}`);
+        return null;
     }
 
     async setInput(bus, code) {
