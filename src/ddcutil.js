@@ -181,8 +181,11 @@ export class Ddcutil {
         return null;
     }
 
-    async setInput(bus, code) {
-        await this._run(['ddcutil', '--bus', bus, 'setvcp', '60', code, '--noverify']);
+    // LG monitors that ignore the standard feature 0x60 take the input on
+    // feature 0xF4 of a side channel, reached via I2C source address 0x50.
+    async setInput(bus, code, lg) {
+        const feature = lg ? ['xF4', code, '--i2c-source-addr=x50'] : ['60', code];
+        await this._run(['ddcutil', '--bus', bus, 'setvcp', ...feature, '--noverify']);
     }
 
     _parseDetect(stdout) {
@@ -190,6 +193,7 @@ export class Ddcutil {
         for (const block of stdout.split(/\n\n/)) {
             let bus = null;
             let name = null;
+            let lg = false;
             let started = false;
             for (const line of block.split('\n')) {
                 if (!started) {
@@ -205,11 +209,14 @@ export class Ddcutil {
                     if (m)
                         bus = m[1];
                 } else if (t.startsWith('Monitor:')) {
-                    name = this._friendlyName(t.substring(t.indexOf(':') + 1).trim());
+                    // "maker:model:serial"; GSM is LG's maker ID.
+                    const raw = t.substring(t.indexOf(':') + 1).trim();
+                    name = this._friendlyName(raw);
+                    lg = raw.startsWith('GSM:');
                 }
             }
             if (bus)
-                monitors[bus] = name || `Bus ${bus}`;
+                monitors[bus] = { name: name || `Bus ${bus}`, lg };
         }
         return monitors;
     }

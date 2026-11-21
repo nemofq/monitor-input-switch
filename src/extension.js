@@ -8,7 +8,7 @@ import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/
 import { QuickMenuToggle, SystemIndicator } from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
 import { Ddcutil } from './ddcutil.js';
-import { INPUTS, normalizeInputCode } from './inputs.js';
+import { INPUTS, inputCode } from './inputs.js';
 
 const ICON = 'video-display-symbolic';
 const MONITORS_CHANGED_SETTLE_MS = 30000;
@@ -80,11 +80,9 @@ export default class MonitorInputSwitchExtension extends Extension {
             'changed::rescan-trigger', () => this._scan(),
             'changed::target-bus', () => this._onTargetBusChanged(),
             this);
-        for (const { key, codeKey } of INPUTS) {
-            this._settings.connectObject(
-                `changed::${key}`, () => this._refreshTile(),
-                `changed::${codeKey}`, () => this._refreshTile(),
-                this);
+        for (const { key, codeKey, nameKey } of INPUTS) {
+            for (const k of [key, codeKey, nameKey].filter(Boolean))
+                this._settings.connectObject(`changed::${k}`, () => this._refreshTile(), this);
         }
         Main.layoutManager.connectObject(
             'monitors-changed', () => this._onMonitorsChanged(), this);
@@ -215,9 +213,11 @@ export default class MonitorInputSwitchExtension extends Extension {
         }
         const monitors = result ?? {};
         this._monitors = monitors;
-        this._settings.set_string('detected-monitors', JSON.stringify(monitors));
-
         const buses = Object.keys(monitors);
+        this._settings.set_strv('lg-buses', buses.filter(b => monitors[b].lg));
+        this._settings.set_string('detected-monitors',
+            JSON.stringify(Object.fromEntries(buses.map(b => [b, monitors[b].name]))));
+
         const preferred = this._settings.get_string('target-bus');
         this._currentBus = buses.includes(preferred) ? preferred : (buses[0] ?? null);
         if (this._currentBus !== preferred)
@@ -244,24 +244,35 @@ export default class MonitorInputSwitchExtension extends Extension {
         }
         tile.visible = true;
         tile.reactive = true;
-        tile.setMonitorName(this._monitors[this._currentBus] ?? '');
+        tile.setMonitorName(this._monitors[this._currentBus]?.name ?? '');
         tile.rebuildMenu(this._visibleInputs());
     }
 
+    // Shown inputs that have a code to send, under the label the menu displays.
     _visibleInputs() {
-        return INPUTS.filter(i => this._settings.get_boolean(i.key));
+        return INPUTS
+            .filter(i => this._settings.get_boolean(i.key) && this._inputCode(i))
+            .map(i => ({
+                ...i,
+                label: (i.nameKey && this._settings.get_string(i.nameKey).trim()) || i.label,
+            }));
+    }
+
+    _lgMode() {
+        return this._settings.get_boolean('lg-mode') && !!this._monitors[this._currentBus]?.lg;
     }
 
     _inputCode(input) {
-        return normalizeInputCode(this._settings.get_string(input.codeKey)) ?? input.defaultCode;
+        return inputCode(input, this._settings, this._lgMode());
     }
 
     async setInput(input) {
         if (!this._currentBus || !this._ddcutil)
             return;
+        const lg = this._lgMode();
         const code = this._inputCode(input);
-        console.log(`[monitor-input-switch] setvcp: bus=${this._currentBus} input=${input.label} (code=${code})`);
-        await this._ddcutil.setInput(this._currentBus, code);
+        console.log(`[monitor-input-switch] setvcp: bus=${this._currentBus} input=${input.label} (code=${code}, lg=${lg})`);
+        await this._ddcutil.setInput(this._currentBus, code, lg);
     }
 
     _clearTimeout(prop) {

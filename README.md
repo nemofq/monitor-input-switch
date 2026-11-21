@@ -9,13 +9,15 @@ A GNOME Shell extension that switches an external monitor's input source via `dd
 **Features:**
 - Switch to HDMI (`0x11`), DisplayPort (`0x0f`), USB-C (`0x1b`) via DDC/CI VCP code `0x60`
 - Choose one target monitor if multiple detected (I²C bus number shown to tell identical models apart)
-- Customize which inputs to show
+- Customize which inputs to show, and add HDMI 2 (`0x12`), DisplayPort 2 (`0x10`) or a custom named input
 - Expand each input in preferences to customize its DDC input ID for monitors with non-standard values
+- LG alternate switching for LG monitors that ignore the standard command (sends VCP code `0xF4` from I²C source address `0x50`, offered when an LG monitor is selected)
 
 ## Requirements
 
 - GNOME Shell 48, 49, 50, or 51
 - `ddcutil` installed (`which ddcutil` to check) and `ddcutil detect` should list your monitor
+- `ddcutil` 2.0 or newer for LG alternate switching
 
 ## Install
 
