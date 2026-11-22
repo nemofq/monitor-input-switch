@@ -274,9 +274,14 @@ export default class MonitorInputSwitchPrefs extends ExtensionPreferences {
                 addMenu.append(input.label, `input.${input.addedKey}`);
                 settings.bind(input.addedKey, row, 'visible', Gio.SettingsBindFlags.GET);
                 signalIds.push(settings.connect(`changed::${input.addedKey}`, () => {
+                    if (syncing)
+                        return;
                     const added = settings.get_boolean(input.addedKey);
+                    // Refused: put the tick back without treating it as an add.
                     if (!added && !canHide(input)) {
+                        syncing = true;
                         settings.set_boolean(input.addedKey, true);
+                        syncing = false;
                         return;
                     }
                     settings.set_boolean(input.key, added);
